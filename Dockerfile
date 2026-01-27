@@ -1,6 +1,8 @@
 # Imagen base oficial de Node (ligera y estable)
 FROM node:20-alpine
 
+RUN apk add --no-cache curl
+
 # Directorio de trabajo dentro del contenedor
 WORKDIR /app
 
