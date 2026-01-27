@@ -1,32 +1,28 @@
-# 1. Usamos una base muy compatible (Debian Slim)
-# Es mejor que Alpine para temas de video y Python
+# 1. Base Debian Slim
 FROM node:20-slim
 
-# 2. Instalamos las herramientas del sistema necesarias
-# - python3 + pip: Para ejecutar el motor de descargas
-# - ffmpeg: Para procesar audio/video si hiciera falta
-# - curl: Para que Coolify pueda hacer el healthcheck
+# 2. Herramientas del sistema
 RUN apt-get update && \
     apt-get install -y python3 python3-pip ffmpeg curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. Instalamos el motor yt-dlp usando Python (pip)
-# Usamos --break-system-packages porque en Docker no es peligroso y simplifica todo
+# 3. Motor yt-dlp
 RUN pip3 install yt-dlp --break-system-packages
 
-# 4. Preparamos el directorio de la app
 WORKDIR /app
 
-# 5. Instalamos primero las dependencias de Node (para aprovechar la caché)
+# 4. Dependencias Node
 COPY package*.json ./
-RUN npm ci --only=production
 
-# 6. Copiamos el resto del código (tu index.js)
+# 🚨 CAMBIO AQUÍ: Usamos 'install' en vez de 'ci' para regenerar el lock si hace falta
+RUN npm install --only=production
+
+# 5. Resto del código
 COPY . .
 
-# 7. Exponemos el puerto correcto
+# 6. Puerto
 EXPOSE 3333
 
-# 8. Arrancamos el servidor
+# 7. Arranque
 CMD ["node", "index.js"]
