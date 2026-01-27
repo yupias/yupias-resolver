@@ -1,28 +1,29 @@
-# 1. Base Debian Slim
-FROM node:20-slim
+# ESTRATEGIA INVERTIDA: Usamos base Python (mejor para yt-dlp/curl-cffi)
+FROM python:3.11-slim-bookworm
 
-# 2. Instalamos herramientas de compilación (necesarias para el camuflaje)
-# Añadimos gcc, python3-dev y libffi-dev para poder compilar librerías potentes
+# 1. Instalamos herramientas básicas y Node.js (v20)
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg curl build-essential python3-dev libffi-dev && \
+    apt-get install -y curl gnupg build-essential libffi-dev ffmpeg && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. Instalamos yt-dlp CON el soporte de camuflaje (curl-cffi)
-# Esto es lo que nos pide el error de TikTok
-RUN pip3 install "yt-dlp[default]" curl-cffi --break-system-packages
+# 2. Instalamos yt-dlp y curl-cffi (el camuflaje)
+# Al estar en una imagen de Python nativa, esto suele compilar sin errores
+RUN pip install --no-cache-dir --upgrade "yt-dlp[default]" curl-cffi
 
 WORKDIR /app
 
-# 4. Dependencias Node
+# 3. Instalamos dependencias de Node
 COPY package*.json ./
 RUN npm install --only=production
 
-# 5. Resto del código
+# 4. Copiamos el resto del código
 COPY . .
 
-# 6. Puerto
+# 5. Puerto
 EXPOSE 3333
 
-# 7. Arranque
+# 6. Arranque
 CMD ["node", "index.js"]
