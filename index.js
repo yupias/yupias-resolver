@@ -1,49 +1,71 @@
+/* YUPIAS RESOLVER - CORE ENGINE (FERRARI MODE) */
 const express = require('express');
+const { exec } = require('child_process');
+const cors = require('cors');
+
 const app = express();
+const PORT = process.env.PORT || 3333;
 
-const PORT = 3333;
-
-// middleware básico
+app.use(cors());
 app.use(express.json());
 
-// health check
+// 🟢 Healthcheck
 app.get('/', (req, res) => {
-  res.json({
-    service: 'yupias-resolver',
-    status: 'alive',
-    timestamp: new Date().toISOString()
-  });
+    res.json({ 
+        service: 'yupias-resolver', 
+        status: 'alive', 
+        engine: 'yt-dlp (Ferrari Mode)',
+        timestamp: new Date().toISOString()
+    });
 });
 
-// resolver REAL
-app.get('/resolve', async (req, res) => {
-  const url = req.query.url;
+// 🧠 Endpoint Real: /resolve
+app.get('/resolve', (req, res) => {
+    const videoUrl = req.query.url;
 
-  if (!url) {
-    return res.status(400).json({
-      error: 'missing_url',
-      message: 'You must provide ?url='
+    if (!videoUrl) {
+        return res.status(400).json({ error: 'Falta el parámetro ?url=' });
+    }
+
+    console.log(`🔍 Procesando: ${videoUrl}`);
+
+    // Comando yt-dlp optimizado para velocidad
+    const cmd = `yt-dlp -j --no-playlist --socket-timeout 15 "${videoUrl}"`;
+
+    exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`❌ Error motor: ${error.message}`);
+            return res.status(500).json({ 
+                error: 'Error extrayendo metadatos', 
+                details: stderr || error.message 
+            });
+        }
+
+        try {
+            const rawData = JSON.parse(stdout);
+            
+            // Limpieza de datos (Payload ligero)
+            const cleanData = {
+                platform: rawData.extractor,
+                id: rawData.id,
+                title: rawData.title,
+                duration: rawData.duration,
+                views: rawData.view_count,
+                likes: rawData.like_count,
+                upload_date: rawData.upload_date,
+                thumbnail: rawData.thumbnail,
+                url: rawData.webpage_url,
+                download_url: rawData.url || null
+            };
+
+            res.json({ success: true, data: cleanData });
+
+        } catch (parseError) {
+            res.status(500).json({ error: 'Salida inválida del motor' });
+        }
     });
-  }
-
-  // detección simple de plataforma
-  let platform = 'unknown';
-  if (url.includes('tiktok.com')) platform = 'tiktok';
-  if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
-  if (url.includes('instagram.com')) platform = 'instagram';
-
-  return res.json({
-    service: 'yupias-resolver',
-    platform,
-    original_url: url,
-    message: 'Resolver OK – listo para extracción real',
-    timestamp: new Date().toISOString()
-  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Yupias Resolver running on port ${PORT}`);
+    console.log(`🔥 Yupias Resolver listo en puerto ${PORT}`);
 });
-
-
-
