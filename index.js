@@ -26,8 +26,7 @@ app.get('/resolve', (req, res) => {
     console.log(`🔍 Procesando v3.1: ${videoUrl}`);
 
     // Comando COMPLETO: Metadata + Subs
-    // Quitamos --write-auto-sub PROVISIONALMENTE para ver si es lo que atasca
-let cmd = `yt-dlp -j --skip-download --socket-timeout 20`; 
+    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30`;
 
     if (PROXY_URL) cmd += ` --proxy "${PROXY_URL}"`;
     cmd += ` "${videoUrl}"`;
