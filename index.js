@@ -1,4 +1,4 @@
-/* YUPIAS RESOLVER - HYBRID v3.1 (Fixed) */
+/* YUPIAS RESOLVER - VIP EDITION (Cookies) 🍪 */
 const express = require('express');
 const { exec } = require('child_process');
 const cors = require('cors');
@@ -9,12 +9,20 @@ const app = express();
 const PORT = process.env.PORT || 3333;
 const PROXY_URL = process.env.HTTP_PROXY;
 
+// 🍪 GESTIÓN DE COOKIES (Seguridad Máxima)
+const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
+if (process.env.YOUTUBE_COOKIES) {
+    // Si hay cookies en Coolify, las escribimos en un archivo oculto
+    fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES);
+    console.log("🍪 Cookies cargadas correctamente");
+} else {
+    console.log("⚠️ No se detectaron cookies (Modo Anónimo)");
+}
+
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.json({ service: 'yupias-resolver', version: '3.1 (Hybrid)', status: 'alive' });
-});
+app.get('/', (req, res) => res.json({ status: 'alive', mode: 'VIP 🍪' }));
 
 app.get('/resolve', (req, res) => {
     const videoUrl = req.query.url;
@@ -23,86 +31,63 @@ app.get('/resolve', (req, res) => {
     const tempId = Date.now().toString();
     const tempPath = path.join('/tmp', tempId);
 
-    console.log(`🔍 Procesando v3.1: ${videoUrl}`);
+    console.log(`🔍 Procesando VIP: ${videoUrl}`);
 
-    // Comando COMPLETO: Metadata + Subs
-    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30`;
+    // Añadimos --cookies al comando
+    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*" --skip-download --output "${tempPath}" --socket-timeout 30`;
+    
+    // Si tenemos el archivo de cookies, lo usamos
+    if (fs.existsSync(COOKIES_PATH)) {
+        cmd += ` --cookies "${COOKIES_PATH}"`;
+    }
 
     if (PROXY_URL) cmd += ` --proxy "${PROXY_URL}"`;
     cmd += ` "${videoUrl}"`;
 
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
-        if (error && !stdout) { // Si falla y no hay JSON, error fatal
-            return res.status(500).json({ error: 'Error motor', details: stderr || error.message });
-        }
+        if (error && !stdout) return res.status(500).json({ error: 'Error motor', details: stderr });
 
         let data = {};
         try {
-            data = JSON.parse(stdout);
-        } catch (e) {
-            // A veces yt-dlp escupe warnings antes del JSON, intentamos limpiarlo
             const jsonStart = stdout.indexOf('{');
-            if (jsonStart > -1) {
-                try {
-                    data = JSON.parse(stdout.substring(jsonStart));
-                } catch (e2) { return res.status(500).json({ error: 'JSON corrupto' }); }
-            } else {
-                return res.status(500).json({ error: 'No se recibió JSON válido' });
-            }
-        }
+            if (jsonStart > -1) data = JSON.parse(stdout.substring(jsonStart));
+        } catch (e) { return res.status(500).json({ error: 'Error JSON' }); }
 
-        // --- LECTURA DE TRANSCRIPT ---
+        // Lectura de Transcript (Igual que antes)
         let transcript = "";
         try {
             if (fs.existsSync('/tmp')) {
-                const dirFiles = fs.readdirSync('/tmp');
-                const subFile = dirFiles.find(f => f.startsWith(tempId) && f.endsWith('.vtt'));
+                const subFile = fs.readdirSync('/tmp').find(f => f.startsWith(tempId) && f.endsWith('.vtt'));
                 if (subFile) {
                     const fullPath = path.join('/tmp', subFile);
-                    const rawSubs = fs.readFileSync(fullPath, 'utf-8');
-                    transcript = rawSubs
+                    transcript = fs.readFileSync(fullPath, 'utf-8')
                         .replace(/WEBVTT[\s\S]*?(\n\n|$)/g, '')
                         .replace(/^\d{2}:\d{2}.*$/gm, '')
                         .replace(/<[^>]*>/g, '')
-                        .replace(/^\s*[\r\n]/gm, '')
-                        .split('\n').join(' ');
+                        .replace(/^\s*[\r\n]/gm, ' ').trim();
                     fs.unlinkSync(fullPath);
                 }
             }
-        } catch (err) { console.error("Error subs:", err); }
+        } catch (err) {}
 
-        // --- DATOS COMPLETOS (Recuperamos lo perdido) ---
-        const cleanData = {
-            platform: data.extractor,
-            id: data.id,
-            title: data.title,
-            description: data.description || "",
-            transcript: transcript.substring(0, 5000) || "No disponible",
-            
-            // Metadatos ricos
-            tags: data.tags || [],
-            categories: data.categories || [],
-            
-            // Métricas
-            views: data.view_count,
-            likes: data.like_count,
-            comments: data.comment_count,
-            shares: data.repost_count,
-            duration: data.duration,
-            
-            // Audio (Recuperado)
-            audio_track: data.track,
-            audio_artist: data.artist,
-
-            upload_date: data.upload_date,
-            thumbnail: data.thumbnail,
-            url: data.webpage_url
-        };
-
-        res.json({ success: true, data: cleanData });
+        res.json({
+            success: true,
+            data: {
+                platform: data.extractor,
+                id: data.id,
+                title: data.title,
+                description: data.description || "",
+                transcript: transcript.substring(0, 5000) || "No disponible",
+                views: data.view_count,
+                likes: data.like_count,
+                duration: data.duration,
+                channel: data.uploader,
+                upload_date: data.upload_date,
+                thumbnail: data.thumbnail,
+                url: data.webpage_url
+            }
+        });
     });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🔥 Yupias Resolver v3.1 listo en ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`🔥 Listo en ${PORT}`));
