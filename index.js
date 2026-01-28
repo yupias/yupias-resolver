@@ -5,9 +5,6 @@ const express = require('express');
 const { exec } = require('child_process');
 const cors = require('cors');
 
-// Import dinámico de fetch para Node.js modernos
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
 const app = express();
 const PORT = process.env.PORT || 3333;
 const PROXY_URL = process.env.HTTP_PROXY;
