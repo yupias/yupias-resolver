@@ -1,101 +1,118 @@
-/* YUPIAS RESOLVER - ELITE EDITION (Base64 Cookies) 🍪🛡️ */
+/* YUPIAS RESOLVER - GOD MODE v10 💎 */
+/* Final Architecture: Robust, Clean, Scalable & Normalized */
+
 const express = require('express');
 const { exec } = require('child_process');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3333;
 const PROXY_URL = process.env.HTTP_PROXY;
 
-// 🧊 DESCONGELADO DE COOKIES
-const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
-if (process.env.YOUTUBE_COOKIES) {
-    try {
-        // Detectamos si es Base64 (si no tiene espacios y termina en =) o texto plano
-        const isBase64 = /^[a-zA-Z0-9+/]*={0,2}$/.test(process.env.YOUTUBE_COOKIES.trim());
-        const cookiesContent = isBase64 
-            ? Buffer.from(process.env.YOUTUBE_COOKIES, 'base64').toString('utf-8')
-            : process.env.YOUTUBE_COOKIES;
-            
-        fs.writeFileSync(COOKIES_PATH, cookiesContent);
-        console.log("🍪 Cookies descongeladas y cargadas correctamente");
-    } catch (e) {
-        console.error("❌ Error cargando cookies:", e.message);
-    }
-} else {
-    console.log("⚠️ No se detectaron cookies (Modo Anónimo)");
-}
-
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => res.json({ status: 'alive', mode: 'ELITE 🍪' }));
+app.get('/', (req, res) => {
+    res.json({ 
+        service: 'yupias-resolver', 
+        version: '10.0 (God Mode)', 
+        status: 'alive'
+    });
+});
 
 app.get('/resolve', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) return res.status(400).json({ error: 'Falta ?url=' });
 
-    const tempId = Date.now().toString();
-    const tempPath = path.join('/tmp', tempId);
+    console.log(`🔍 Procesando GOD MODE: ${videoUrl}`);
 
-    console.log(`🔍 Procesando ELITE: ${videoUrl}`);
-
-    // Comando COMPLETO: Metadata + Subs + Cookies
-    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30 --js-runtimes node`;
-    
-    if (fs.existsSync(COOKIES_PATH)) {
-        cmd += ` --cookies "${COOKIES_PATH}"`;
-    }
+    // CONFIGURACIÓN DEL MOTOR
+    // --dump-single-json: Obligatorio para pureza de datos.
+    // --no-warnings: Stdout limpio.
+    // --flat-playlist: Si por error pasan playlist, esto lo trata rápido.
+    let cmd = `yt-dlp --dump-single-json --no-warnings --skip-download --no-playlist --socket-timeout 20`;
 
     if (PROXY_URL) cmd += ` --proxy "${PROXY_URL}"`;
     cmd += ` "${videoUrl}"`;
 
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
-        if (error && !stdout) return res.status(500).json({ error: 'Error motor', details: stderr });
+        if (error) {
+            console.error(`❌ Motor Error: ${stderr || error.message}`);
+            // Devolvemos 500 pero con estructura limpia para que n8n no explote feo
+            return res.status(500).json({ 
+                error: 'Extractor falló', 
+                details: (stderr || error.message).substring(0, 200) 
+            });
+        }
 
-        let data = {};
         try {
-            const jsonStart = stdout.indexOf('{');
-            if (jsonStart > -1) data = JSON.parse(stdout.substring(jsonStart));
-        } catch (e) { return res.status(500).json({ error: 'Error JSON' }); }
+            const raw = JSON.parse(stdout);
 
-        // Lectura de Transcript
-        let transcript = "";
-        try {
-            if (fs.existsSync('/tmp')) {
-                const subFile = fs.readdirSync('/tmp').find(f => f.startsWith(tempId) && f.endsWith('.vtt'));
-                if (subFile) {
-                    const fullPath = path.join('/tmp', subFile);
-                    transcript = fs.readFileSync(fullPath, 'utf-8')
-                        .replace(/WEBVTT[\s\S]*?(\n\n|$)/g, '')
-                        .replace(/^\d{2}:\d{2}.*$/gm, '')
-                        .replace(/<[^>]*>/g, '')
-                        .replace(/^\s*[\r\n]/gm, ' ').trim();
-                    fs.unlinkSync(fullPath);
-                }
-            }
-        } catch (err) {}
+            // 🔧 HELPERS DE NORMALIZACIÓN (La clave del 10/10)
+            const getNum = (val) => Number.isFinite(val) ? val : null;
+            const getStr = (val) => (val || "").toString().trim();
+            const getPlatform = (val) => (val || "unknown").toLowerCase();
 
-        res.json({
-            success: true,
-            data: {
-                platform: data.extractor,
-                id: data.id,
-                title: data.title,
-                description: data.description || "",
-                transcript: transcript.substring(0, 5000) || "No disponible",
-                views: data.view_count,
-                likes: data.like_count,
-                duration: data.duration,
-                channel: data.uploader,
-                upload_date: data.upload_date,
-                thumbnail: data.thumbnail,
-                url: data.webpage_url
-            }
-        });
+            // 💎 MODELO MAESTRO
+            const cleanData = {
+                // Identidad
+                id: getStr(raw.id),
+                title: getStr(raw.title),
+                url: getStr(raw.webpage_url),
+                thumbnail: getStr(raw.thumbnail),
+                
+                // Clasificación Precisa
+                platform: getPlatform(raw.extractor_key || raw.extractor),
+                type: raw.is_live ? 'live' : 'video', // Nuevo: live detection
+                language: raw.language || null,
+
+                // Contexto
+                description: getStr(raw.description),
+                tags: Array.isArray(raw.tags) ? raw.tags : [],
+                categories: Array.isArray(raw.categories) ? raw.categories : [],
+                
+                // 📊 Métricas Puras (Distinguiendo 0 de NULL)
+                metrics: {
+                    views: getNum(raw.view_count),
+                    likes: getNum(raw.like_count),
+                    comments: getNum(raw.comment_count),
+                    shares: getNum(raw.repost_count) 
+                },
+                
+                // 🎵 Audio Intelligence
+                audio: {
+                    track: raw.track || raw.alt_title || null,
+                    artist: raw.artist || raw.creator || raw.uploader || null,
+                    is_trend: !!(raw.track || raw.artist)
+                },
+
+                // 👤 Creator Intelligence
+                creator: {
+                    name: raw.uploader || raw.channel || null,
+                    id: raw.uploader_id || raw.channel_id || null,
+                    url: raw.uploader_url || raw.channel_url || null,
+                    subscribers: getNum(raw.channel_follower_count)
+                },
+
+                // Datos Temporales
+                duration: getNum(raw.duration),
+                upload_date: raw.upload_date || null,
+                timestamp: getNum(raw.timestamp)
+            };
+
+            res.json({ success: true, data: cleanData });
+
+        } catch (parseError) {
+            console.error('❌ JSON Parse Error:', parseError);
+            res.status(500).json({ 
+                error: 'Error procesando respuesta', 
+                details: 'Formato JSON inválido del motor.',
+                raw_partial: stdout.substring(0, 100) 
+            });
+        }
     });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🔥 Listo en ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🔥 Yupias Resolver v10 (GOD MODE) listo en ${PORT}`);
+});;
