@@ -43,7 +43,7 @@ app.get('/resolve', (req, res) => {
     console.log(`🔍 Procesando ELITE: ${videoUrl}`);
 
     // Comando COMPLETO: Metadata + Subs + Cookies
-    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30`;
+    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30 --js-runtimes node`;
     
     if (fs.existsSync(COOKIES_PATH)) {
         cmd += ` --cookies "${COOKIES_PATH}"`;
