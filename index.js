@@ -1,9 +1,9 @@
-/* YUPIAS RESOLVER - EXTREME DATA EDITION v2 */
-/* Esta versión extrae TODOS los metadatos posibles sin descargar el video */
-
+/* YUPIAS RESOLVER - INSANE MODE v3 (Subtitles) */
 const express = require('express');
 const { exec } = require('child_process');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -15,9 +15,8 @@ app.use(express.json());
 app.get('/', (req, res) => {
     res.json({ 
         service: 'yupias-resolver', 
-        version: '2.0 (Extreme Data)', 
-        status: 'alive', 
-        proxy_configured: !!PROXY_URL 
+        version: '3.0 (Insane Mode - Subtitles)', 
+        status: 'alive' 
     });
 });
 
@@ -25,70 +24,88 @@ app.get('/resolve', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) return res.status(400).json({ error: 'Falta ?url=' });
 
-    console.log(`🔍 Procesando (Full Data): ${videoUrl}`);
+    const tempId = Date.now().toString(); // ID único para archivos temporales
+    const tempPath = path.join('/tmp', tempId); // Carpeta temporal
 
-    // Aumentamos los límites para que quepan descripciones largas
-    let cmd = `yt-dlp -j --no-playlist --socket-timeout 20`;
+    console.log(`🔍 Procesando (Subs Mode): ${videoUrl}`);
 
-    if (PROXY_URL) {
-        cmd += ` --proxy "${PROXY_URL}"`;
-    }
+    // COMANDO MÁGICO:
+    // --write-auto-sub: Intenta bajar subtítulos generados
+    // --sub-lang "es.*,en.*": Prefiere Español, luego Inglés
+    // --skip-download: NO bajes el video (vital para velocidad)
+    // --output: Guarda los archivos con nuestro ID temporal
+    let cmd = `yt-dlp -j --write-auto-sub --sub-lang "es.*,en.*,lat.*" --skip-download --output "${tempPath}" --socket-timeout 30`;
 
+    if (PROXY_URL) cmd += ` --proxy "${PROXY_URL}"`;
     cmd += ` "${videoUrl}"`;
 
-    // MaxBuffer aumentado a 50MB para soportar JSONs gigantes de YouTube
     exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`❌ Error: ${error.message}`);
-            return res.status(500).json({ 
-                error: 'Error extrayendo metadatos', 
-                details: stderr || error.message 
-            });
-        }
-
+        // Leemos el JSON principal
+        let data = {};
         try {
-            const rawData = JSON.parse(stdout);
-
-            // 🧹 LIMPIEZA INTELIGENTE
-            const cleanData = {
-                platform: rawData.extractor,
-                id: rawData.id,
-                title: rawData.title,
-                
-                // 🧠 CONTEXTO EXTRA PARA LA IA
-                description: rawData.description || "", // Descripción completa
-                tags: rawData.tags || [], // Hashtags
-                categories: rawData.categories || [], // Categoría (ej: Music, Gaming)
-                
-                // 📊 MÉTRICAS COMPLETAS
-                duration: rawData.duration,
-                views: rawData.view_count,
-                likes: rawData.like_count,
-                comments: rawData.comment_count, // Nuevo
-                shares: rawData.repost_count,    // Nuevo (si existe)
-
-                // 🎵 AUDIO INFO (Clave para detectar tendencias)
-                audio_track: rawData.track,
-                audio_artist: rawData.artist,
-
-                // 📅 FECHAS
-                upload_date: rawData.upload_date,
-                
-                // 🖼️ MEDIA
-                thumbnail: rawData.thumbnail,
-                url: rawData.webpage_url,
-                download_url: rawData.url || null
-            };
-
-            res.json({ success: true, data: cleanData });
-
-        } catch (parseError) {
-            console.error('❌ Error parseando JSON:', parseError);
-            res.status(500).json({ error: 'Error procesando respuesta del motor' });
+            data = JSON.parse(stdout);
+        } catch (e) {
+            console.error("Error parseando JSON principal");
+             if (error) return res.status(500).json({ error: error.message });
         }
+
+        // 🕵️‍♂️ BUSCADOR DE SUBTÍTULOS
+        // yt-dlp guarda los subs como "ID.es.vtt" o "ID.en.vtt"
+        let transcript = "";
+        try {
+            const dirFiles = fs.readdirSync('/tmp');
+            // Buscamos cualquier archivo que empiece por nuestro ID y termine en .vtt
+            const subFile = dirFiles.find(f => f.startsWith(tempId) && f.endsWith('.vtt'));
+
+            if (subFile) {
+                console.log(`📝 Subtítulos encontrados: ${subFile}`);
+                const fullPath = path.join('/tmp', subFile);
+                const rawSubs = fs.readFileSync(fullPath, 'utf-8');
+                
+                // LIMPIEZA DE VTT (Quitar tiempos y metadatos)
+                // 1. Quitar cabeceras
+                // 2. Quitar lineas de tiempo (00:00:00.000 --> ...)
+                // 3. Quitar etiquetas HTML (<c>, <b>)
+                transcript = rawSubs
+                    .replace(/WEBVTT[\s\S]*?(\n\n|$)/g, '') // Header
+                    .replace(/^\d{2}:\d{2}.*$/gm, '') // Timestamps
+                    .replace(/<[^>]*>/g, '') // HTML tags
+                    .replace(/^\s*[\r\n]/gm, '') // Líneas vacías
+                    .split('\n').join(' '); // Unir en una línea
+
+                // Borramos el archivo
+                fs.unlinkSync(fullPath);
+            } else {
+                console.log("⚠️ No se encontraron subtítulos (o no se pudieron descargar)");
+            }
+        } catch (err) {
+            console.error("Error procesando subtítulos:", err);
+        }
+
+        // LIMPIEZA FINAL
+        const cleanData = {
+            platform: data.extractor,
+            id: data.id,
+            title: data.title,
+            description: data.description || "",
+            // ¡LA JOYA DE LA CORONA! 💎
+            transcript: transcript.substring(0, 5000) || "No disponible (Audio no transcribible automáticamente)", 
+            
+            tags: data.tags || [],
+            views: data.view_count,
+            likes: data.like_count,
+            comments: data.comment_count,
+            shares: data.repost_count,
+            duration: data.duration,
+            upload_date: data.upload_date,
+            thumbnail: data.thumbnail,
+            url: data.webpage_url
+        };
+
+        res.json({ success: true, data: cleanData });
     });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🔥 Yupias Resolver v2 listo en puerto ${PORT}`);
+    console.log(`🔥 Yupias Resolver v3 (INSANE) listo en ${PORT}`);
 });
